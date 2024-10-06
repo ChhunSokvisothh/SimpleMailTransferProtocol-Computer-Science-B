@@ -1,7 +1,6 @@
 import threading
 import socket
 import smtplib
-from email.mime.text import MIMEText
 
 PORT = 5050
 SERVER = "localhost"
@@ -15,26 +14,26 @@ server.bind(ADDR)
 clients = set() 
 clients_lock = threading.Lock()  
 
-
-def send_email(smtp_server, sender_email, sender_password, recipient_email, subject, message):
+def send_email(sender, password, reciepient, subject, message):
     try:
-        with smtplib.SMTP(smtp_server, 587) as server:
-            server.starttls()  # Start TLS for security
-            server.login(sender_email, sender_password)  # Login to the SMTP server
-            
-            msg = MIMEText(message)
-            msg['Subject'] = subject
-            msg['From'] = sender_email
-            msg['To'] = recipient_email
-            
-            server.sendmail(sender_email, recipient_email, msg.as_string())
-            print(f"Email sent to {recipient_email} from {sender_email}")
-    except smtplib.SMTPAuthenticationError:
-        print("Authentication Failure: Check your email and password.")
-    except smtplib.SMTPConnectError:
-        print("Error connecting to the SMTP server.")
+        # Set up the server
+        smtp_server = smtplib.SMTP("smtp.gmail.com", 587)
+        smtp_server.starttls()
+
+        # Log in to the email account
+        smtp_server.login(sender, password)
+
+        # Create the message
+        email_message = f"Subject: {subject}\n\n{message}"
+
+        # Send the email
+        smtp_server.sendmail(sender, reciepient, email_message)
+        smtp_server.quit()
+
+        return True
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"Failed to send email: {e}")
+        return False
 
 
 def handle_client(conn, addr):
@@ -50,15 +49,19 @@ def handle_client(conn, addr):
             if msg == DISCONNECT_MESSAGE:
                 connected = False
 
-            print(f"[{addr}] {msg}")
+            data = msg.split(",")
+            if len(data) == 5:
+                sender, reciepient, subject, message, password = data
+                email_sent = sender(sender, password, reciepient, subject, message)
+                
+                if email_sent:
+                    confirmation_message = "Email sent successfully!"
+                else:
+                    confirmation_message = "Failed to send email."
 
-            with clients_lock:
-                for c in clients:
-                    if c != conn:
-                        c.sendall(f"[{addr}] {msg}".encode(FORMAT))
-                    else:
-                        confirmation_message = f"[SERVER] Your message was successfully sent to other clients."
-                        c.sendall(confirmation_message.encode(FORMAT))
+                conn.sendall(confirmation_message.encode(FORMAT))
+            else:
+                conn.sendall("Invalid message format.".encode(FORMAT))
 
     finally:
         with clients_lock:
