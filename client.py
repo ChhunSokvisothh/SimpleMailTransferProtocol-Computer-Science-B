@@ -1,10 +1,22 @@
+import socket
+import threading
+import time
 import smtplib
 from smtplib import SMTPAuthenticationError, SMTPConnectError, SMTPException
 import ssl
+import getpass
 
+# Chatting Variables
+PORT = 5050
+SERVER = "localhost"
+ADDR = (SERVER, PORT)
+FORMAT = "utf-8"
+DISCONNECT_MESSAGE = "!DISCONNECT"
+
+# Email Sending Functions
 def login():
     sender = input("Enter sender email: ")
-    password = input("Enter app password: ")
+    password = getpass.getpass("Enter app password: ")  # Hide the password
 
     try:
         # Initialize the SMTP server
@@ -34,24 +46,19 @@ def login():
         print(f"An unexpected error occurred during login: {e}")
         return None, None, None
 
-
 def info():
-    reciepient = input("Recipient email: ")
+    recipient = input("Recipient email: ")
     subject = input("Subject: ")
     message = input("Message: ")
 
     text = f"Subject: {subject}\n\n{message}"
-    return reciepient, text
+    return recipient, text
 
-
-def send_email(sender, password, server, reciepient, text):
+def send_email(sender, password, server, recipient, text):
     try:
-
-        server.sendmail(sender, reciepient, text)
+        server.sendmail(sender, recipient, text)
         print("Email sent successfully!")
-
-        server.quit() #close server
-
+        server.quit()  # Close server
     except SMTPException as e:
         print(f"An error occurred while sending the email: {e}")
         if isinstance(e, TimeoutError):
@@ -63,17 +70,73 @@ def send_email(sender, password, server, reciepient, text):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+# Chatting Functions
+def connect():
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect(ADDR)
+    return client
 
-def main():
+def send_chat(client, msg):
+    message = msg.encode(FORMAT)
+    client.send(message)
 
-    sender, password, server = login()
+def receive_chat(client):
+    while True:
+        try:
+            # Receiving messages from the server
+            msg = client.recv(1024).decode(FORMAT)
+            if msg:
+                print(f"\n{msg}")
+                print("Message (q for quit): ", end='', flush=True)
+            else:
+                break  
+        except:
+            print("Error receiving data.")
+            break
 
-    if sender and password and server:
+def start_chat():
+    answer = input('Would you like to connect to the chat (yes/no)? ')
+    if answer.lower() != 'yes':
+        return
 
-        reciepient, text = info()
+    connection = connect()
+    receive_thread = threading.Thread(target=receive_chat, args=(connection,))
+    receive_thread.start()
 
-        send_email(sender, password, server, reciepient, text)
+    while True:
+        msg = input("Message (q for quit): ")
 
+        if msg == 'q':
+            break
 
-# Start the application
-main()
+        send_chat(connection, msg)
+
+    send_chat(connection, DISCONNECT_MESSAGE)
+    time.sleep(1)
+    print('Disconnected from chat')
+
+# Main Menu
+def main_menu():
+    while True:
+        print("\n--- Main Menu ---")
+        print("1. Start Chat")
+        print("2. Send Email")
+        print("3. Exit")
+        
+        choice = input("Enter your choice (1/2/3): ")
+
+        if choice == '1':
+            start_chat()
+        elif choice == '2':
+            sender, password, server = login()
+            if sender and password and server:
+                recipient, text = info()
+                send_email(sender, password, server, recipient, text)
+        elif choice == '3':
+            print("Exiting application.")
+            break
+        else:
+            print("Invalid choice, please try again.")
+
+# Start the Application
+main_menu()
